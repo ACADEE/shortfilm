@@ -1,23 +1,34 @@
 import { useEffect, useRef } from 'react'
 import { useStudioStore } from '@/store/studioStore'
 import { useFirestoreSnapshot } from '@/hooks/useFirestoreSnapshot'
-import { plansCol } from '@/firebase/firestore'
+import { plansCol, charactersCol } from '@/firebase/firestore'
 import { callFunction } from '@/utils/callFunction'
 import VideoPlayer from './VideoPlayer'
 import ProgressBar from './ProgressBar'
 import PlanList from './PlanList'
 import ExportZip from './ExportZip'
 
-const EP_ID = 'ep_01'
-
 export default function FilmingRoom({ projectId }) {
-  const { phase2Complete, setVideoJob, setError } = useStudioStore()
+  const { phase2Complete, setVideoJob, setError, currentEpId: EP_ID } = useStudioStore()
   const jobsStarted = useRef(false)
 
   const { docs: plans } = useFirestoreSnapshot(
     phase2Complete && projectId ? plansCol(projectId, EP_ID) : null,
     'plan_number'
   )
+
+  const { docs: characters } = useFirestoreSnapshot(
+    phase2Complete && projectId ? charactersCol(projectId) : null
+  )
+  const heroImage =
+    characters.find((c) => c.role === 'Hero' && c.reference_image_url)?.reference_image_url ||
+    characters.find((c) => c.reference_image_url)?.reference_image_url ||
+    null
+
+  // Reset the guard when the active episode changes so new episodes auto-start
+  useEffect(() => {
+    jobsStarted.current = false
+  }, [EP_ID])
 
   // Start video generation for all pending plans once phase 2 is approved
   useEffect(() => {
@@ -36,7 +47,7 @@ export default function FilmingRoom({ projectId }) {
           const result = await callFunction('generateVideo', {
             videoMotionPrompt: plan.video_motion_prompt,
             imagePromptOverride: plan.image_prompt_override,
-            referenceImageUrl: plan.reference_image_url,
+            referenceImageUrl: plan.reference_image_url || heroImage,
             planId: plan.id,
             epId: EP_ID,
             projectId,
@@ -50,7 +61,7 @@ export default function FilmingRoom({ projectId }) {
     }
 
     startVideoJobs()
-  }, [phase2Complete, projectId, plans.length])
+  }, [phase2Complete, projectId, EP_ID, plans.length])
 
   return (
     <div className="flex flex-col gap-5 p-5 h-full overflow-y-auto">

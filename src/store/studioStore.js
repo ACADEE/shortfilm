@@ -10,6 +10,9 @@ export const useStudioStore = create((set, get) => ({
   phase2Complete: false,
   phase3Complete: false,
 
+  // Active episode in FilmingRoom
+  currentEpId: 'ep_01',
+
   // Phase 1 streaming
   streamingText: '',
   streamingDone: false,
@@ -53,6 +56,8 @@ export const useStudioStore = create((set, get) => ({
     if (phase === 3) set({ phase3Complete: true })
   },
 
+  setCurrentEpId: (epId) => set({ currentEpId: epId }),
+
   setError: (error) => set({ error }),
   clearError: () => set({ error: null }),
 
@@ -62,6 +67,7 @@ export const useStudioStore = create((set, get) => ({
       phase1Complete: false,
       phase2Complete: false,
       phase3Complete: false,
+      currentEpId: 'ep_01',
       streamingText: '',
       streamingDone: false,
       parsedScript: null,

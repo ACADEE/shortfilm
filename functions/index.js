@@ -11,6 +11,7 @@ const { generateVideo } = require('./src/generateVideo')
 const { checkTaskStatus } = require('./src/checkTaskStatus')
 const { exportZip } = require('./src/exportZip')
 const { pollActiveTasks } = require('./src/pollActiveTasks')
+const { generateEpisode } = require('./src/generateEpisode')
 
 exports.generateScript = generateScript
 exports.generateImage = generateImage
@@ -18,3 +19,4 @@ exports.generateVideo = generateVideo
 exports.checkTaskStatus = checkTaskStatus
 exports.exportZip = exportZip
 exports.pollActiveTasks = pollActiveTasks
+exports.generateEpisode = generateEpisode
