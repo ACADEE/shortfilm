@@ -29,7 +29,7 @@ async function generateImageHandler(req, res) {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'nano-banana-pro',
+        model: 'nano-banana-2',
         input: {
           prompt: imagePrompt,
           aspect_ratio: '9:16',
