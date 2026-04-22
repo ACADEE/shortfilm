@@ -1,0 +1,19 @@
+{
+  "name": "duan-ju-functions",
+  "version": "1.0.0",
+  "private": true,
+  "engines": { "node": "20" },
+  "main": "index.js",
+  "scripts": {
+    "serve": "firebase emulators:start --only functions",
+    "deploy": "firebase deploy --only functions"
+  },
+  "dependencies": {
+    "firebase-functions": "^6.3.2",
+    "firebase-admin": "^12.7.0",
+    "@anthropic-ai/sdk": "^0.39.0",
+    "node-fetch": "^3.3.2",
+    "archiver": "^7.0.1",
+    "cors": "^2.8.5"
+  }
+}

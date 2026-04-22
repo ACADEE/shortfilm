@@ -1,18 +1,27 @@
 {
-  "name": "next-netlify-starter",
-  "version": "0.5.0",
+  "name": "duan-ju-studio",
+  "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "export": "next export"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
-    "next": "^12.0.7",
-    "react": "^17.0.2",
-    "react-dom": "^17.0.2"
+    "firebase": "^10.14.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0",
+    "@tanstack/react-query": "^5.62.7",
+    "zustand": "^5.0.2",
+    "jszip": "^3.10.1"
   },
   "devDependencies": {
-    "@netlify/plugin-nextjs": "^4.2.5"
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.16",
+    "vite": "^6.0.5"
   }
 }
