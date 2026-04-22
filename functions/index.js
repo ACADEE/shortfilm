@@ -10,9 +10,11 @@ const { generateImage } = require('./src/generateImage')
 const { generateVideo } = require('./src/generateVideo')
 const { checkTaskStatus } = require('./src/checkTaskStatus')
 const { exportZip } = require('./src/exportZip')
+const { pollActiveTasks } = require('./src/pollActiveTasks')
 
 exports.generateScript = generateScript
 exports.generateImage = generateImage
 exports.generateVideo = generateVideo
 exports.checkTaskStatus = checkTaskStatus
 exports.exportZip = exportZip
+exports.pollActiveTasks = pollActiveTasks

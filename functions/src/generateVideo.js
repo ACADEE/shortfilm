@@ -60,7 +60,7 @@ async function generateVideoHandler(req, res) {
       .doc(epId)
       .collection('plans')
       .doc(planId)
-      .update({ kie_task_id: taskId, status: 'queued' })
+      .update({ kie_task_id: taskId, status: 'queued', owner_id: userId })
 
     return res.json({ taskId })
   } catch (err) {
