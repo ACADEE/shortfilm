@@ -3,6 +3,7 @@ const admin = require('firebase-admin')
 const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args))
 const corsMiddleware = require('./cors')
 const { verifyToken } = require('./authMiddleware')
+const { verifyProjectOwner } = require('./ownershipMiddleware')
 
 const KIE_API_URL = 'https://api.kie.ai/api/v1/jobs/createTask'
 
@@ -18,6 +19,8 @@ async function generateVideoHandler(req, res) {
   if (!videoMotionPrompt || !planId || !epId || !projectId) {
     return res.status(400).json({ error: 'videoMotionPrompt, planId, epId, projectId required' })
   }
+
+  if (!(await verifyProjectOwner(projectId, userId, res))) return
 
   const apiKey = functions.config().kieai?.key || process.env.KIE_API_KEY
 

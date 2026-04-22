@@ -3,6 +3,7 @@ const admin = require('firebase-admin')
 const Anthropic = require('@anthropic-ai/sdk')
 const corsMiddleware = require('./cors')
 const { verifyToken } = require('./authMiddleware')
+const { verifyProjectOwner } = require('./ownershipMiddleware')
 
 const db = admin.firestore()
 
@@ -84,6 +85,8 @@ async function generateEpisodeHandler(req, res) {
   if (!projectId || !epNumber || epNumber < 2) {
     return res.status(400).json({ error: 'projectId and epNumber >= 2 required' })
   }
+
+  if (!(await verifyProjectOwner(projectId, userId, res))) return
 
   const epId = `ep_${String(epNumber).padStart(2, '0')}`
   const prevEpId = `ep_${String(epNumber - 1).padStart(2, '0')}`

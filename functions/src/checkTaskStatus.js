@@ -4,6 +4,7 @@ const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...ar
 const { getStorage } = require('firebase-admin/storage')
 const corsMiddleware = require('./cors')
 const { verifyToken } = require('./authMiddleware')
+const { verifyProjectOwner } = require('./ownershipMiddleware')
 
 const KIE_STATUS_URL = 'https://api.kie.ai/api/v1/jobs/getTaskDetail'
 
@@ -31,6 +32,8 @@ async function checkTaskStatusHandler(req, res) {
   if (!taskId || !projectId || !itemType) {
     return res.status(400).json({ error: 'taskId, projectId, itemType required' })
   }
+
+  if (!(await verifyProjectOwner(projectId, userId, res))) return
 
   const apiKey = functions.config().kieai?.key || process.env.KIE_API_KEY
 

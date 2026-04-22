@@ -5,6 +5,7 @@ const { getStorage } = require('firebase-admin/storage')
 const archiver = require('archiver')
 const corsMiddleware = require('./cors')
 const { verifyToken } = require('./authMiddleware')
+const { verifyProjectOwner } = require('./ownershipMiddleware')
 
 const db = admin.firestore()
 
@@ -18,6 +19,8 @@ async function exportZipHandler(req, res) {
   if (!projectId || !epId) {
     return res.status(400).json({ error: 'projectId and epId required' })
   }
+
+  if (!(await verifyProjectOwner(projectId, userId, res))) return
 
   try {
     // Query all ready plans ordered by plan_number
