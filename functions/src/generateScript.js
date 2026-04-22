@@ -75,7 +75,7 @@ async function generateScriptHandler(req, res) {
   const { ideaText, genre, tone } = req.body
   if (!ideaText) return res.status(400).json({ error: 'ideaText required' })
 
-  // Create project document
+  // Create project document immediately
   const projectRef = db.collection('projects').doc()
   const projectId = projectRef.id
   await projectRef.set({
@@ -86,23 +86,32 @@ async function generateScriptHandler(req, res) {
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   })
 
-  // Set SSE headers
+  // SSE headers — must be set before any write
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
   res.setHeader('Connection', 'keep-alive')
   res.setHeader('Transfer-Encoding', 'chunked')
-  res.setHeader('X-Project-Id', projectId)
+  res.setHeader('X-Accel-Buffering', 'no') // disable nginx buffering
 
-  // Send project ID immediately
-  res.write(`data: {"type":"project_id","projectId":"${projectId}"}\n\n`)
+  // Send project ID so client can subscribe to Firestore immediately
+  res.write(`data: ${JSON.stringify({ type: 'project_id', projectId })}\n\n`)
 
-  const apiKey = functions.config().anthropic?.key || process.env.ANTHROPIC_API_KEY
+  const apiKey =
+    (functions.config().anthropic && functions.config().anthropic.key) ||
+    process.env.ANTHROPIC_API_KEY
+
+  if (!apiKey) {
+    res.write(`data: ${JSON.stringify({ type: 'error', message: 'Anthropic API key not configured' })}\n\n`)
+    res.end()
+    return
+  }
+
   const client = new Anthropic({ apiKey })
-
   let fullText = ''
 
   try {
-    const stream = await client.messages.stream({
+    // Use .on('text') + .finalMessage() — most reliable streaming pattern
+    const stream = client.messages.stream({
       model: 'claude-sonnet-4-6',
       max_tokens: 16000,
       temperature: 0.9,
@@ -115,85 +124,99 @@ async function generateScriptHandler(req, res) {
       ],
     })
 
-    for await (const event of stream) {
-      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-        const chunk = event.delta.text
-        fullText += chunk
-        res.write(`data: ${JSON.stringify({ type: 'chunk', text: chunk })}\n\n`)
-      }
-    }
+    stream.on('text', (text) => {
+      fullText += text
+      // Write each chunk as SSE immediately
+      res.write(`data: ${JSON.stringify({ type: 'chunk', text })}\n\n`)
+    })
 
-    // Parse and save to Firestore
+    // Wait for the full response
+    await stream.finalMessage()
+
+    // Parse JSON — try direct parse first, then extract JSON block with regex
     let parsed
     try {
       parsed = JSON.parse(fullText)
     } catch {
       const match = fullText.match(/\{[\s\S]*\}/)
-      if (match) parsed = JSON.parse(match[0])
-      else throw new Error('Could not parse JSON from response')
+      if (match) {
+        parsed = JSON.parse(match[0])
+      } else {
+        throw new Error('Response was not valid JSON')
+      }
     }
 
-    // Write series data
-    await projectRef.update({ title: parsed.title })
+    // ── Write to Firestore ──────────────────────────────────────────────
+
+    // Update project title
+    await projectRef.update({ title: parsed.title || 'Untitled Series' })
+
+    // Series document
     await projectRef.collection('series').doc('data').set({
       title: parsed.title,
       global_synopsis: parsed.global_synopsis,
       recurrent_motif: parsed.recurrent_motif,
-      season_arc: parsed.season_arc,
+      season_arc: parsed.season_arc || [],
     })
 
-    // Write characters
-    const charBatch = db.batch()
-    for (const char of (parsed.characters || [])) {
-      const charId = char.name.toLowerCase().replace(/\s+/g, '_')
-      charBatch.set(projectRef.collection('characters').doc(charId), {
-        ...char,
-        charId,
-        reference_image_url: null,
-        status: 'pending',
-        kie_task_id: null,
-      })
+    // Characters (batched write)
+    if (parsed.characters?.length) {
+      const charBatch = db.batch()
+      for (const char of parsed.characters) {
+        const charId = char.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')
+        charBatch.set(projectRef.collection('characters').doc(charId), {
+          ...char,
+          charId,
+          reference_image_url: null,
+          status: 'pending',
+          kie_task_id: null,
+        })
+      }
+      await charBatch.commit()
     }
-    await charBatch.commit()
 
-    // Write locations
-    const locBatch = db.batch()
-    for (const loc of (parsed.locations || [])) {
-      const locId = loc.name.toLowerCase().replace(/\s+/g, '_')
-      locBatch.set(projectRef.collection('locations').doc(locId), {
-        ...loc,
-        locId,
-        reference_image_url: null,
-        status: 'pending',
-        kie_task_id: null,
-      })
+    // Locations (batched write)
+    if (parsed.locations?.length) {
+      const locBatch = db.batch()
+      for (const loc of parsed.locations) {
+        const locId = loc.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')
+        locBatch.set(projectRef.collection('locations').doc(locId), {
+          ...loc,
+          locId,
+          reference_image_url: null,
+          status: 'pending',
+          kie_task_id: null,
+        })
+      }
+      await locBatch.commit()
     }
-    await locBatch.commit()
 
-    // Write episode 1 metadata
+    // Episode 1 metadata
     const ep1Ref = projectRef.collection('episodes').doc('ep_01')
     await ep1Ref.set({
-      ...parsed.episode_1.metadata,
+      ...(parsed.episode_1?.metadata || {}),
       epId: 'ep_01',
       status: 'pending',
     })
 
-    // Write plans
-    const planBatch = db.batch()
-    for (const plan of (parsed.episode_1.plans || [])) {
-      const planId = `plan_${String(plan.plan_number).padStart(2, '0')}`
-      planBatch.set(ep1Ref.collection('plans').doc(planId), {
-        ...plan,
-        planId,
-        reference_image_url: null,
-        kie_task_id: null,
-        mp4_url: null,
-        status: 'pending',
-      })
+    // Plans (batched write, max 500 per batch — 30-45 plans is fine)
+    if (parsed.episode_1?.plans?.length) {
+      const planBatch = db.batch()
+      for (const plan of parsed.episode_1.plans) {
+        const planId = `plan_${String(plan.plan_number).padStart(2, '0')}`
+        planBatch.set(ep1Ref.collection('plans').doc(planId), {
+          ...plan,
+          planId,
+          reference_image_url: null,
+          kie_task_id: null,
+          mp4_url: null,
+          status: 'pending',
+        })
+      }
+      await planBatch.commit()
     }
-    await planBatch.commit()
 
-    // Mark phase 1 done
+    // Mark phase 1 complete
     await projectRef.update({
       status: 'p1_done',
       'phases.p1': 'done',
@@ -202,8 +225,10 @@ async function generateScriptHandler(req, res) {
     res.write(`data: ${JSON.stringify({ type: 'done', projectId })}\n\n`)
     res.end()
   } catch (err) {
-    console.error('generateScript error:', err)
-    await projectRef.update({ status: 'p1_error', 'phases.p1': 'error' }).catch(() => {})
+    console.error('[generateScript] error:', err)
+    await projectRef
+      .update({ status: 'p1_error', 'phases.p1': 'error' })
+      .catch(() => {})
     res.write(`data: ${JSON.stringify({ type: 'error', message: err.message })}\n\n`)
     res.end()
   }
